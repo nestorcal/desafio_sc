@@ -31,7 +31,7 @@ La operación no debe estar acoplada a campos específicos (amount, price), sino
 Recibir el nombre del campo como parámetro al crear la operacion
 ```python
 class NormalizeAmountOperation(Operation):
-    def __init__(self, field_name: str):  # Campo dinámico
+    def __init__(self, field_name: str):
         self.field_name = field_name
 ```
 ```
@@ -42,11 +42,29 @@ ops = [
 ]
 ```
 
-### Como manejaria el caso donde el campo a normalizar no existe en el registro?
+### Como manejaria el caso donde el campo a normalizar no existe en el registro? Piense en el estado de la operacion versus el estado del registro
+
 Se decide entre error o valor por defecto según el contexto.
 
 | Enfoque                | Implementación                              | Casos de Uso                          |
 |------------------------|---------------------------------------------|---------------------------------------|
 | **Error**  | Reportar error si el campo es requerido     | Campos críticos        |
 | **Valor por defecto**  | Asignar `0.0` o `None` si el campo falta    | Campos opcionales    |
+
+Tambien teniendo en cuenta que se tiene un estado de registro, se puede implementar añadir el estado de la operacion, esto para auditar que operaciones fallaron y por que; y depurar flujos complejos.
+
+Se puede extender apply (Registro + Errores + Estado de Operación). Tambien process_stream se debera cambiar para manejar el retorno de 2 o 3 elementos segun corresponda.
+
+```
+class NormalizeAmountOperation(Operation):
+
+   def apply(self, record: Dict) -> Tuple[Dict, List[str], str]:
+      ...
+      ...
+       # retorna: (registro, errores, estado_operación)
+       estado_op = "éxito"  # o "fallo", "omitido"
+       return record, errors, estado_op
+```
+
+
 
