@@ -2,7 +2,7 @@ from abc import ABC,abstractmethod
 from typing import Dict,List,Tuple,Iterable,Optional
 import re
 
-
+# === CLASE BASE ===
 class Operation(ABC):
     """
     Clase base abstracta
@@ -10,14 +10,16 @@ class Operation(ABC):
     @abstractmethod
     def apply(self, record:Dict) -> Tuple[Dict,List[str]]:
         """
+        Aplica una operación a un registro.
         :param record(Dict) Registro a procesar
         :return: Tuple[Dict,List[str] Tupla conteniendo el registro(modificado) y lista de mensajes de error
         """
         pass
 
+# === OPERACIÓN DE NORMALIZACIÓN DE MONTOS ===
 class NormalizeAmountOperation(Operation):
     """
-    Operation para normalizar campo numerico a float.
+    Operation para normalizar campo numerico a float del campo "amount"
     Limpia el valor de caracteres no numericos, menos el separador de decimales
     """
     def __init__(self, field_name:str):
@@ -44,20 +46,19 @@ class NormalizeAmountOperation(Operation):
         try:
             # Convertir a string para asegurar que re.sub funcione
             cleaned_value = re.sub(r"[^\d.,-]", "", str(value))
-            # Estandariza el separador decimal a '.'
-            cleaned_value=cleaned_value.replace(",",".")
-            normalized = float(cleaned_value)
-            record[self.field_name] = normalized
+            cleaned_value=cleaned_value.replace(",",".") # Estandariza el separador decimal a '.'
+            record[self.field_name] = float(cleaned_value)
         except ValueError:
             # Si la conversión falla registrar el error y establecer el campo a None.
-            errors.append(f"Valor ' {value}' no se puede convertirse a float")
+            errors.append(f"En campo '{self.field_name}'el valor ' {value}' no se puede convertirse a float")
             record[self.field_name] = None
+
         return record,errors
 
-
+# === VALIDACIÓN CONTEXTUAL ===
 class ContextualFieldValidation(Operation):
     """
-    Operation para validar un campo.
+    Operation para validar un campo usando una expresión regular
     """
     def __init__(self, field_name:str, regex: Optional[str]=None):
         """
@@ -70,6 +71,7 @@ class ContextualFieldValidation(Operation):
 
     def apply(self, record:Dict) -> Tuple[Dict,List[str]]:
         errors=[]
+
         if self.field_name not in record:
             errors.append(f"Campo obligatorio ' {self.field_name}' no encontrado")
         elif self.field_name in record and self.regex and not re.match(self.regex, str(record[self.field_name])):
@@ -78,10 +80,11 @@ class ContextualFieldValidation(Operation):
             errors.append(f"Campo obligatorio '{self.field_name}' está vacío")
         return record, errors
 
+# === GESTOR DE REGISTROS DE CONTEXTOS ===
 class RecordContextManager:
     """
     GEstiona y aplica los contextos(Operaciones) a un flujo de registros
-    Cada registro tendra un __type__ que determinara q operaciones aplicar
+    Cada registro tendra un campo __type__ que determinara q operaciones aplicar
     """
     def __init__(self):
         self.context_operations: Dict[str, List[Operation]] = {}
@@ -119,20 +122,21 @@ class RecordContextManager:
                 yield record, errors
                 continue
 
+            # Aplicar cada operación asociada al tipo de contexto
             for operation in self.context_operations[context_type]:
                 record, op_errors = operation.apply(record)
                 errors.extend(op_errors)
 
+            # Si hubo errores, marcar registro como inválido
             if errors:
                 record["__estado__"] = "inválido"
-                # Añadir todos los errores acumulados al campo __errors__ del registro.
-                # Usar extend para no crear listas anidadas si __errors__ ya tenía algo
                 record["__errors__"].extend(errors)
 
             yield record, errors
 
-
+# === EJEMPLO DE USO ===
 if __name__ == '__main__':
+    # Datos simulados de entrada
     records = [
         {
             "__type__": "order_event",
@@ -163,6 +167,7 @@ if __name__ == '__main__':
     ]
     manager = RecordContextManager()
 
+    # Registrar operaciones por tipo de contexto
     manager.register_context(
         "order_event",
         [
@@ -177,7 +182,6 @@ if __name__ == '__main__':
         [
             NormalizeAmountOperation("price"),
             ContextualFieldValidation("product_sku", regex=r"^SKU_\w+$"),
-            ContextualFieldValidation("is_active")
         ]
     )
 
